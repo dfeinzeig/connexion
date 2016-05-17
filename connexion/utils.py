@@ -14,6 +14,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 import functools
 import importlib
 import re
+
 import flask
 import werkzeug.wrappers
 
@@ -163,3 +164,17 @@ def boolean(s):
         return False
     else:
         raise ValueError('Invalid boolean value')
+
+
+def is_nullable(param_def):
+    return param_def.get('x-nullable', False)
+
+
+def is_null(value):
+    if hasattr(value, 'strip') and value.strip() in ['null', 'None']:
+        return True
+
+    if value is None:
+        return True
+
+    return False

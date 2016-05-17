@@ -1,7 +1,7 @@
-import pytest
-from connexion.exceptions import InvalidSpecification
 from connexion.app import App
+from connexion.exceptions import InvalidSpecification
 
+import pytest
 from conftest import TEST_FOLDER, build_app_from_fixture
 
 
@@ -17,7 +17,7 @@ def test_app_with_relative_path(simple_api_spec_dir):
     assert get_bye.data == b'Goodbye jsantos'
 
 
-def test_no_swagger(simple_api_spec_dir):
+def test_no_swagger_ui(simple_api_spec_dir):
     app = App(__name__, 5001, simple_api_spec_dir, swagger_ui=False, debug=True)
     app.add_api('swagger.yaml')
 
@@ -30,6 +30,46 @@ def test_no_swagger(simple_api_spec_dir):
     app2_client = app2.app.test_client()
     swagger_ui2 = app2_client.get('/v1.0/ui/')  # type: flask.Response
     assert swagger_ui2.status_code == 404
+
+
+def test_swagger_json_app(simple_api_spec_dir):
+    """ Verify the swagger.json file is returned for default setting passed to app. """
+    app = App(__name__, 5001, simple_api_spec_dir, debug=True)
+    app.add_api('swagger.yaml')
+
+    app_client = app.app.test_client()
+    swagger_json = app_client.get('/v1.0/swagger.json')  # type: flask.Response
+    assert swagger_json.status_code == 200
+
+
+def test_no_swagger_json_app(simple_api_spec_dir):
+    """ Verify the swagger.json file is not returned when set to False when creating app. """
+    app = App(__name__, 5001, simple_api_spec_dir, swagger_json=False, debug=True)
+    app.add_api('swagger.yaml')
+
+    app_client = app.app.test_client()
+    swagger_json = app_client.get('/v1.0/swagger.json')  # type: flask.Response
+    assert swagger_json.status_code == 404
+
+
+def test_swagger_json_api(simple_api_spec_dir):
+    """ Verify the swagger.json file is returned for default setting passed to api. """
+    app = App(__name__, 5001, simple_api_spec_dir, debug=True)
+    app.add_api('swagger.yaml')
+
+    app_client = app.app.test_client()
+    swagger_json = app_client.get('/v1.0/swagger.json')  # type: flask.Response
+    assert swagger_json.status_code == 200
+
+
+def test_no_swagger_json_api(simple_api_spec_dir):
+    """ Verify the swagger.json file is not returned when set to False when adding api. """
+    app = App(__name__, 5001, simple_api_spec_dir, debug=True)
+    app.add_api('swagger.yaml', swagger_json=False)
+
+    app_client = app.app.test_client()
+    swagger_json = app_client.get('/v1.0/swagger.json')  # type: flask.Response
+    assert swagger_json.status_code == 404
 
 
 def test_single_route(simple_app):
@@ -60,13 +100,13 @@ def test_single_route(simple_app):
 def test_resolve_method(simple_app):
     app_client = simple_app.app.test_client()
     resp = app_client.get('/v1.0/resolver-test/method')  # type: flask.Response
-    assert resp.data.decode() == '"DummyClass"'
+    assert resp.data.decode() == '"DummyClass"\n'
 
 
 def test_resolve_classmethod(simple_app):
     app_client = simple_app.app.test_client()
     resp = app_client.get('/v1.0/resolver-test/classmethod')  # type: flask.Response
-    assert resp.data.decode() == '"DummyClass"'
+    assert resp.data.decode() == '"DummyClass"\n'
 
 
 def test_add_api_with_function_resolver_function_is_wrapped(simple_api_spec_dir):

@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 
 
 def test_parameter_validation(simple_app):
@@ -55,7 +56,7 @@ def test_array_query_param(simple_app):
 def test_path_parameter_someint(simple_app):
     app_client = simple_app.app.test_client()
     resp = app_client.get('/v1.0/test-int-path/123')  # type: flask.Response
-    assert resp.data.decode() == '"int"'
+    assert resp.data.decode() == '"int"\n'
 
     # non-integer values will not match Flask route
     resp = app_client.get('/v1.0/test-int-path/foo')  # type: flask.Response
@@ -65,7 +66,7 @@ def test_path_parameter_someint(simple_app):
 def test_path_parameter_somefloat(simple_app):
     app_client = simple_app.app.test_client()
     resp = app_client.get('/v1.0/test-float-path/123.45')  # type: flask.Response
-    assert resp.data.decode() == '"float"'
+    assert resp.data.decode() == '"float"\n'
 
     # non-float values will not match Flask route
     resp = app_client.get('/v1.0/test-float-path/123,45')  # type: flask.Response
@@ -102,10 +103,42 @@ def test_formdata_param(simple_app):
     assert response == 'test'
 
 
+def test_formdata_bad_request(simple_app):
+    app_client = simple_app.app.test_client()
+    resp = app_client.post('/v1.0/test-formData-param')
+    assert resp.status_code == 400
+    response = json.loads(resp.data.decode())
+    assert response['detail'] == "Missing formdata parameter 'formData'"
+
+
 def test_formdata_missing_param(simple_app):
     app_client = simple_app.app.test_client()
     resp = app_client.post('/v1.0/test-formData-missing-param',
                            data={'missing_formData': 'test'})
+    assert resp.status_code == 200
+
+
+def test_formdata_file_upload(simple_app):
+    app_client = simple_app.app.test_client()
+    resp = app_client.post('/v1.0/test-formData-file-upload',
+                           data={'formData': (BytesIO(b'file contents'), 'filename.txt')})
+    assert resp.status_code == 200
+    response = json.loads(resp.data.decode())
+    assert response == {'filename.txt': 'file contents'}
+
+
+def test_formdata_file_upload_bad_request(simple_app):
+    app_client = simple_app.app.test_client()
+    resp = app_client.post('/v1.0/test-formData-file-upload')
+    assert resp.status_code == 400
+    response = json.loads(resp.data.decode())
+    assert response['detail'] == "Missing formdata parameter 'formData'"
+
+
+def test_formdata_file_upload_missing_param(simple_app):
+    app_client = simple_app.app.test_client()
+    resp = app_client.post('/v1.0/test-formData-file-upload-missing-param',
+                           data={'missing_formData': (BytesIO(b'file contents'), 'example.txt')})
     assert resp.status_code == 200
 
 
@@ -181,3 +214,29 @@ def test_array_in_path(simple_app):
 
     resp = app_client.get('/v1.0/test-array-in-path/one_item,another_item')
     assert json.loads(resp.data.decode()) == ["one_item", "another_item"]
+
+
+def test_nullable_parameter(simple_app):
+    app_client = simple_app.app.test_client()
+    resp = app_client.get('/v1.0/nullable-parameters?time_start=null')
+    assert json.loads(resp.data.decode()) == 'it was None'
+
+    resp = app_client.get('/v1.0/nullable-parameters?time_start=None')
+    assert json.loads(resp.data.decode()) == 'it was None'
+
+    time_start = 1010
+    resp = app_client.get(
+        '/v1.0/nullable-parameters?time_start={}'.format(time_start))
+    assert json.loads(resp.data.decode()) == time_start
+
+    resp = app_client.post('/v1.0/nullable-parameters', data={"post_param": 'None'})
+    assert json.loads(resp.data.decode()) == 'it was None'
+
+    resp = app_client.post('/v1.0/nullable-parameters', data={"post_param": 'null'})
+    assert json.loads(resp.data.decode()) == 'it was None'
+
+    resp = app_client.put('/v1.0/nullable-parameters', data="null")
+    assert json.loads(resp.data.decode()) == 'it was None'
+
+    resp = app_client.put('/v1.0/nullable-parameters', data="None")
+    assert json.loads(resp.data.decode()) == 'it was None'

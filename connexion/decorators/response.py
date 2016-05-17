@@ -14,12 +14,16 @@ Unless required by applicable law or agreed to in writing, software distributed 
 # Decorators to change the return type of endpoints
 import functools
 import logging
-from ..exceptions import NonConformingResponseBody, NonConformingResponseHeaders
-from ..problem import problem
-from .validation import ResponseBodyValidator
-from .decorator import BaseDecorator
+
+from flask import json
 from jsonschema import ValidationError
 
+from ..exceptions import (NonConformingResponseBody,
+                          NonConformingResponseHeaders)
+from ..problem import problem
+from ..utils import produces_json
+from .decorator import BaseDecorator
+from .validation import ResponseBodyValidator
 
 logger = logging.getLogger('connexion.decorators.response')
 
@@ -47,21 +51,47 @@ class ResponseValidator(BaseDecorator):
         response_definition = self.operation.resolve_reference(response_definition)
         # TODO handle default response definitions
 
-        if response_definition and response_definition.get("schema"):
+        if self.is_json_schema_compatible(response_definition):
             schema = response_definition.get("schema")
             v = ResponseBodyValidator(schema)
             try:
+                # For cases of custom encoders, we need to encode and decode to
+                # transform to the actual types that are going to be returned.
+                data = json.dumps(data)
+                data = json.loads(data)
+
                 v.validate_schema(data)
             except ValidationError as e:
                 raise NonConformingResponseBody(message=str(e))
 
         if response_definition and response_definition.get("headers"):
-            response_definition_header_keys = response_definition.get("headers").keys()
-            if not all(item in headers.keys() for item in response_definition_header_keys):
-                raise NonConformingResponseHeaders(
-                    message="Keys in header don't match response specification. Difference: %s"
-                    % list(set(headers.keys()).symmetric_difference(set(response_definition_header_keys))))
+            # converting to set is needed to support python 2.7
+            response_definition_header_keys = set(response_definition.get("headers").keys())
+            header_keys = set(headers.keys())
+            missing_keys = response_definition_header_keys - header_keys
+            if missing_keys:
+                pretty_list = ', '.join(missing_keys)
+                msg = ("Keys in header don't match response specification. "
+                       "Difference: {0}").format(pretty_list)
+                raise NonConformingResponseHeaders(message=msg)
         return True
+
+    def is_json_schema_compatible(self, response_definition):
+        """
+        Verify if the specified operation responses are JSON schema
+        compatible.
+
+        All operations that specify a JSON schema and have content
+        type "application/json" or "text/plain" can be validated using
+        json_schema package.
+
+        :type response_definition: dict
+        :rtype bool
+        """
+        if not response_definition:
+            return False
+        return ('schema' in response_definition and
+                (produces_json([self.mimetype]) or self.mimetype == 'text/plain'))
 
     def __call__(self, function):
         """

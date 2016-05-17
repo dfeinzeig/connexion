@@ -11,21 +11,23 @@ Unless required by applicable law or agreed to in writing, software distributed 
  language governing permissions and limitations under the License.
 """
 
-from copy import deepcopy
 import functools
 import logging
+from copy import deepcopy
 
 from jsonschema import ValidationError
 
 from .decorators import validation
 from .decorators.metrics import UWSGIMetricsCollector
 from .decorators.parameter import parameter_to_arg
-from .decorators.produces import BaseSerializer, Produces, Jsonifier
+from .decorators.produces import BaseSerializer, Jsonifier, Produces
 from .decorators.response import ResponseValidator
-from .decorators.security import security_passthrough, verify_oauth, get_tokeninfo_url
-from .decorators.validation import RequestBodyValidator, ParameterValidator, TypeValidationError
+from .decorators.security import (get_tokeninfo_url, security_passthrough,
+                                  verify_oauth)
+from .decorators.validation import (ParameterValidator, RequestBodyValidator,
+                                    TypeValidationError)
 from .exceptions import InvalidSpecification
-from .utils import flaskify_endpoint, produces_json
+from .utils import flaskify_endpoint, is_nullable, produces_json
 
 logger = logging.getLogger('connexion.operation')
 
@@ -97,6 +99,8 @@ class SecureOperation(object):
 
 
 class Operation(SecureOperation):
+    DEFAULT_MIMETYPE = 'application/json'
+
     """
     A single API operation on a path.
     """
@@ -228,9 +232,7 @@ class Operation(SecureOperation):
                     visited.add(v)
                     stack.append(self._retrieve_reference(v))
                 elif isinstance(v, (list, tuple)):
-                    for item in v:
-                        if hasattr(item, "items"):
-                            stack.append(item)
+                    continue
                 elif hasattr(v, "items"):
                     stack.append(v)
 
@@ -264,16 +266,21 @@ class Operation(SecureOperation):
         return definition
 
     def get_mimetype(self):
-        if produces_json(self.produces):  # endpoint will return json
+        """
+        If the endpoint has no 'produces' then the default is
+        'application/json'.
+
+        :rtype str
+        """
+        if produces_json(self.produces):
             try:
                 return self.produces[0]
             except IndexError:
-                # if the endpoint as no 'produces' then the default is 'application/json'
-                return 'application/json'
+                return Operation.DEFAULT_MIMETYPE
         elif len(self.produces) == 1:
             return self.produces[0]
         else:
-            return None
+            return Operation.DEFAULT_MIMETYPE
 
     def resolve_parameters(self, parameters):
         for param in parameters:
@@ -286,13 +293,15 @@ class Operation(SecureOperation):
     @property
     def body_schema(self):
         """
-        `About operation parameters
-        <https://github.com/swagger-api/swagger-spec/blob/master/versions/2.0.md#fixed-fields-4>`_
+        The body schema definition for this operation.
+        """
+        return self.body_definition.get('schema')
 
-        A list of parameters that are applicable for all the operations described under this path. These parameters can
-        be overridden at the operation level, but cannot be removed there. The list MUST NOT include duplicated
-        parameters. A unique parameter is defined by a combination of a name and location. The list can use the
-        Reference Object to link to parameters that are defined at the Swagger Object's parameters.
+    @property
+    def body_definition(self):
+        """
+        The body complete definition for this operation.
+
         **There can be one "body" parameter at most.**
 
         :rtype: dict
@@ -302,9 +311,7 @@ class Operation(SecureOperation):
             raise InvalidSpecification(
                 "{method} {path} There can be one 'body' parameter at most".format(**vars(self)))
 
-        body_parameters = body_parameters[0] if body_parameters else {}
-        schema = body_parameters.get('schema')  # type: dict
-        return schema
+        return body_parameters[0] if body_parameters else {}
 
     @property
     def function(self):
@@ -334,7 +341,7 @@ class Operation(SecureOperation):
         logger.debug('... Adding security decorator (%r)', security_decorator, extra=vars(self))
         function = security_decorator(function)
 
-        if UWSGIMetricsCollector.is_available():
+        if UWSGIMetricsCollector.is_available():  # pragma: no cover
             decorator = UWSGIMetricsCollector(self.path, self.method)
             function = decorator(function)
 
@@ -379,7 +386,8 @@ class Operation(SecureOperation):
         if self.parameters:
             yield ParameterValidator(self.parameters)
         if self.body_schema:
-            yield RequestBodyValidator(self.body_schema)
+            yield RequestBodyValidator(self.body_schema,
+                                       is_nullable(self.body_definition))
 
     @property
     def __response_validation_decorator(self):

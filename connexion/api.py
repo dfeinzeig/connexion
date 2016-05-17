@@ -11,20 +11,22 @@ Unless required by applicable law or agreed to in writing, software distributed 
  language governing permissions and limitations under the License.
 """
 
-import flask
-import jinja2
+import copy
 import json
 import logging
 import pathlib
-import six
 import sys
+
+import flask
+import jinja2
+import six
 import werkzeug.exceptions
 import yaml
 from swagger_spec_validator.validator20 import validate_spec
-from .operation import Operation
-from . import utils
-from . import resolver
+
+from . import resolver, utils
 from .handlers import AuthErrorHandler
+from .operation import Operation
 
 MODULE_PATH = pathlib.Path(__file__).absolute().parent
 SWAGGER_UI_PATH = MODULE_PATH / 'vendor' / 'swagger-ui'
@@ -38,12 +40,16 @@ def compatibility_layer(spec):
     # Make all response codes be string
     for path_name, methods_available in spec.get('paths', {}).items():
         for method_name, method_def in methods_available.items():
-            if method_name == 'parameters':
+            if (method_name == 'parameters' or not isinstance(
+                    method_def, dict)):
                 continue
+
             response_definitions = {}
-            for response_code, response_def in method_def.get('responses', {}).items():
+            for response_code, response_def in method_def.get(
+                    'responses', {}).items():
                 response_definitions[str(response_code)] = response_def
-                method_def['responses'] = response_definitions
+
+            method_def['responses'] = response_definitions
     return spec
 
 
@@ -53,13 +59,14 @@ class Api(object):
     """
 
     def __init__(self, swagger_yaml_path, base_url=None, arguments=None,
-                 swagger_ui=None, swagger_path=None, swagger_url=None,
+                 swagger_json=None, swagger_ui=None, swagger_path=None, swagger_url=None,
                  validate_responses=False, resolver=resolver.Resolver(),
                  auth_all_paths=False, debug=False):
         """
         :type swagger_yaml_path: pathlib.Path
         :type base_url: str | None
         :type arguments: dict | None
+        :type swagger_json: bool
         :type swagger_ui: bool
         :type swagger_path: string | None
         :type swagger_url: string | None
@@ -85,7 +92,10 @@ class Api(object):
 
         logger.debug('Read specification', extra=self.specification)
 
-        validate_spec(compatibility_layer(self.specification))
+        self.specification = compatibility_layer(self.specification)
+        # Avoid validator having ability to modify specification
+        spec = copy.deepcopy(self.specification)
+        validate_spec(spec)
 
         # https://github.com/swagger-api/swagger-spec/blob/master/versions/2.0.md#fixed-fields
         # If base_url is not on provided then we try to read it from the swagger.yaml or use / by default
@@ -118,7 +128,8 @@ class Api(object):
         # Create blueprint and endpoints
         self.blueprint = self.create_blueprint()
 
-        self.add_swagger_json()
+        if swagger_json:
+            self.add_swagger_json()
         if swagger_ui:
             self.add_swagger_ui()
 

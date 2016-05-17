@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
-from connexion import problem, request
-from connexion import NoContent
+from connexion import NoContent, problem, request
 from flask import redirect
 
 
@@ -242,6 +241,16 @@ def test_formdata_missing_param():
     return ''
 
 
+def test_formdata_file_upload(formData):
+    filename = formData.filename
+    contents = formData.read().decode('utf-8')
+    return {filename: contents}
+
+
+def test_formdata_file_upload_missing_param():
+    return ''
+
+
 def test_bool_default_param(thruthiness):
     return thruthiness
 
@@ -289,3 +298,42 @@ def test_array_in_path(names):
 
 def test_global_response_definition():
     return ['general', 'list'], 200
+
+
+def test_nullable_parameters(time_start):
+    if time_start is None:
+        return 'it was None'
+    return time_start
+
+
+def test_nullable_param_post(post_param):
+    if post_param is None:
+        return 'it was None'
+    return post_param
+
+
+def test_nullable_param_put(contents):
+    if contents is None:
+        return 'it was None'
+    return contents
+
+
+def test_custom_json_response():
+    return {'theResult': DummyClass()}, 200
+
+
+def get_blob_data():
+    return b'cool\x00\x08'
+
+
+def get_data_as_binary():
+    return get_blob_data(), 200, {'Content-Type': 'application/octet-stream'}
+
+
+def get_invalid_response():
+    return {"simple": object()}
+
+
+def get_custom_problem_response():
+    return problem(402, "You need to pay", "Missing amount",
+                   ext={'amount': 23.0})

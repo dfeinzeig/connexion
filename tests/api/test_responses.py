@@ -1,4 +1,7 @@
 import json
+from struct import unpack
+
+from connexion.decorators.produces import JSONEncoder
 
 
 def test_app(simple_app):
@@ -107,3 +110,45 @@ def test_default_object_body(simple_app):
     assert resp.status_code == 200
     response = json.loads(resp.data.decode())
     assert response == 1
+
+
+def test_custom_encoder(simple_app):
+
+    class CustomEncoder(JSONEncoder):
+        def default(self, o):
+            if o.__class__.__name__ == 'DummyClass':
+                return "cool result"
+            return JSONEncoder.default(self, o)
+
+    flask_app = simple_app.app
+    flask_app.json_encoder = CustomEncoder
+    app_client = flask_app.test_client()
+
+    resp = app_client.get('/v1.0/custom-json-response')
+    assert resp.status_code == 200
+    response = json.loads(resp.data.decode())
+    assert response['theResult'] == 'cool result'
+
+
+def test_content_type_not_json(simple_app):
+    app_client = simple_app.app.test_client()
+
+    resp = app_client.get('/v1.0/blob-response')
+    assert resp.status_code == 200
+
+    # validate binary content
+    text, number = unpack('!4sh', resp.data)
+    assert text == b'cool'
+    assert number == 8
+
+
+def test_maybe_blob_or_json(simple_app):
+    app_client = simple_app.app.test_client()
+
+    resp = app_client.get('/v1.0/binary-response')
+    assert resp.status_code == 200
+    assert resp.content_type == 'application/octet-stream'
+    # validate binary content
+    text, number = unpack('!4sh', resp.data)
+    assert text == b'cool'
+    assert number == 8

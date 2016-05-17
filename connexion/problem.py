@@ -10,8 +10,9 @@ Unless required by applicable law or agreed to in writing, software distributed 
 "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific
  language governing permissions and limitations under the License.
 """
-import flask
 import json
+
+import flask
 
 
 def problem(status, title, detail, type='about:blank', instance=None, headers=None, ext=None):
@@ -46,7 +47,7 @@ def problem(status, title, detail, type='about:blank', instance=None, headers=No
     if ext:
         problem_response.update(ext)
 
-    body = json.dumps(problem_response)
+    body = [json.dumps(problem_response, indent=2), '\n']
     response = flask.current_app.response_class(body, mimetype='application/problem+json',
                                                 status=status)  # type: flask.Response
     if headers:
